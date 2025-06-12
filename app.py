@@ -4,6 +4,7 @@ import pickle
 import numpy as np
 import pandas as pd
 import logging
+import os
 from datetime import datetime
 
 # Initialize Flask app
@@ -21,31 +22,80 @@ label_encoders = None
 feature_names = None
 
 def load_model_artifacts():
-    """Load all saved model artifacts"""
+    """Load all saved model artifacts with detailed error reporting"""
     global model, scaler, label_encoders, feature_names
     
+    required_files = [
+        'heart_disease_model.pkl',
+        'scaler.pkl', 
+        'label_encoders.pkl',
+        'feature_names.pkl'
+    ]
+    
+    # Check if files exist
+    missing_files = []
+    for file in required_files:
+        if not os.path.exists(file):
+            missing_files.append(file)
+    
+    if missing_files:
+        logger.error(f"Missing required files: {missing_files}")
+        return False
+    
     try:
+        # Load each file with individual error handling
+        logger.info("Loading model...")
         with open('heart_disease_model.pkl', 'rb') as f:
             model = pickle.load(f)
+        logger.info(f"Model loaded: {type(model).__name__}")
+        
+        logger.info("Loading scaler...")
         with open('scaler.pkl', 'rb') as f:
             scaler = pickle.load(f)
+        logger.info(f"Scaler loaded: {type(scaler).__name__}")
+        
+        logger.info("Loading label encoders...")
         with open('label_encoders.pkl', 'rb') as f:
             label_encoders = pickle.load(f)
+        logger.info(f"Label encoders loaded: {list(label_encoders.keys()) if label_encoders else 'None'}")
+        
+        logger.info("Loading feature names...")
         with open('feature_names.pkl', 'rb') as f:
             feature_names = pickle.load(f)
+        logger.info(f"Feature names loaded: {feature_names}")
         
-        logger.info("All model artifacts loaded successfully!")
+        # Validate loaded artifacts
+        if model is None:
+            logger.error("Model is None after loading")
+            return False
+        if scaler is None:
+            logger.error("Scaler is None after loading")
+            return False
+        if label_encoders is None:
+            logger.error("Label encoders is None after loading")
+            return False
+        if feature_names is None:
+            logger.error("Feature names is None after loading")
+            return False
+            
+        logger.info("All model artifacts loaded and validated successfully!")
         return True
+        
     except Exception as e:
         logger.error(f"Error loading model artifacts: {str(e)}")
+        logger.error(f"Error type: {type(e).__name__}")
         return False
 
 def validate_input_data(data):
     """Validate input data format and values"""
+    if not data:
+        return False, "No input data provided"
+        
     required_fields = [
         'Age', 'Sex', 'ChestPainType', 'RestingBP', 'Cholesterol',
         'FastingBS', 'RestingECG', 'MaxHR', 'ExerciseAngina', 'Oldpeak', 'ST_Slope'
     ]
+    
     missing_fields = [field for field in required_fields if field not in data]
     if missing_fields:
         return False, f"Missing required fields: {', '.join(missing_fields)}"
@@ -82,6 +132,7 @@ def validate_input_data(data):
             'ExerciseAngina': ['Y', 'N'],
             'ST_Slope': ['Up', 'Flat', 'Down']
         }
+        
         for field, valid_values in categorical_validations.items():
             if data[field] not in valid_values:
                 return False, f"{field} must be one of: {', '.join(valid_values)}"
@@ -92,9 +143,22 @@ def validate_input_data(data):
         return False, f"Invalid data type: {str(e)}"
 
 def preprocess_input(data):
-    """Preprocess input data for prediction"""
+    """Preprocess input data for prediction with detailed error handling"""
     try:
+        # Check if required components are loaded
+        if label_encoders is None:
+            raise Exception("Label encoders not loaded")
+        if scaler is None:
+            raise Exception("Scaler not loaded")
+        if feature_names is None:
+            raise Exception("Feature names not loaded")
+            
+        logger.info(f"Input data: {data}")
+        logger.info(f"Available label encoders: {list(label_encoders.keys()) if label_encoders else 'None'}")
+        
         processed_data = data.copy()
+        
+        # Convert numeric fields
         processed_data['Age'] = float(processed_data['Age'])
         processed_data['RestingBP'] = float(processed_data['RestingBP'])
         processed_data['Cholesterol'] = float(processed_data['Cholesterol'])
@@ -102,15 +166,36 @@ def preprocess_input(data):
         processed_data['MaxHR'] = float(processed_data['MaxHR'])
         processed_data['Oldpeak'] = float(processed_data['Oldpeak'])
 
+        # Process categorical fields
         categorical_cols = ['Sex', 'ChestPainType', 'RestingECG', 'ExerciseAngina', 'ST_Slope']
-        for col in categorical_cols:
-            if col in label_encoders:
-                processed_data[col] = label_encoders[col].transform([processed_data[col]])[0]
         
+        for col in categorical_cols:
+            if col not in label_encoders:
+                raise Exception(f"Label encoder for column '{col}' not found. Available encoders: {list(label_encoders.keys())}")
+            
+            encoder = label_encoders[col]
+            if encoder is None:
+                raise Exception(f"Label encoder for column '{col}' is None")
+                
+            try:
+                processed_data[col] = encoder.transform([processed_data[col]])[0]
+                logger.info(f"Encoded {col}: {data[col]} -> {processed_data[col]}")
+            except ValueError as e:
+                raise Exception(f"Error encoding {col} with value '{processed_data[col]}': {str(e)}")
+        
+        # Create feature array
+        logger.info(f"Feature names: {feature_names}")
         feature_array = np.array([processed_data[feature] for feature in feature_names]).reshape(1, -1)
+        logger.info(f"Feature array shape: {feature_array.shape}")
+        
+        # Scale features
         scaled_features = scaler.transform(feature_array)
+        logger.info(f"Scaled features shape: {scaled_features.shape}")
+        
         return scaled_features
+        
     except Exception as e:
+        logger.error(f"Error in preprocessing: {str(e)}")
         raise Exception(f"Error in preprocessing: {str(e)}")
 
 @app.route('/', methods=['GET'])
@@ -124,14 +209,26 @@ def home():
 @app.route('/predict', methods=['POST'])
 def predict():
     try:
+        # Check if models are loaded
+        if any(x is None for x in [model, scaler, label_encoders, feature_names]):
+            return jsonify({
+                'status': 'error', 
+                'message': 'Model artifacts not properly loaded. Please check server logs.'
+            }), 500
+        
         data = request.get_json()
+        logger.info(f"Received prediction request: {data}")
+        
         if not data:
             return jsonify({'status': 'error', 'message': 'No input data provided'}), 400
         
+        # Validate input
         is_valid, validation_message = validate_input_data(data)
         if not is_valid:
+            logger.warning(f"Validation failed: {validation_message}")
             return jsonify({'status': 'error', 'message': validation_message}), 400
         
+        # Preprocess and predict
         processed_input = preprocess_input(data)
         prediction = model.predict(processed_input)[0]
         prediction_proba = model.predict_proba(processed_input)[0]
@@ -161,16 +258,26 @@ def model_info():
     try:
         info = {
             'status': 'success',
-            'model_type': str(type(model).__name__),
-            'feature_names': feature_names,
-            'categorical_features': list(label_encoders.keys()),
-            'categorical_options': {
-                col: encoder.classes_.tolist() 
+            'model_loaded': model is not None,
+            'scaler_loaded': scaler is not None,
+            'encoders_loaded': label_encoders is not None,
+            'feature_names_loaded': feature_names is not None
+        }
+        
+        if model is not None:
+            info['model_type'] = str(type(model).__name__)
+        if feature_names is not None:
+            info['feature_names'] = feature_names
+        if label_encoders is not None:
+            info['categorical_features'] = list(label_encoders.keys())
+            info['categorical_options'] = {
+                col: encoder.classes_.tolist() if encoder is not None else []
                 for col, encoder in label_encoders.items()
             }
-        }
+        
         return jsonify(info)
     except Exception as e:
+        logger.error(f"Error getting model info: {str(e)}")
         return jsonify({'status': 'error', 'message': f'Error getting model info: {str(e)}'}), 500
 
 @app.route('/health', methods=['GET'])
@@ -179,16 +286,27 @@ def health_check():
         model_loaded = model is not None
         scaler_loaded = scaler is not None
         encoders_loaded = label_encoders is not None
+        features_loaded = feature_names is not None
+        
+        # Check file existence
+        file_status = {}
+        required_files = ['heart_disease_model.pkl', 'scaler.pkl', 'label_encoders.pkl', 'feature_names.pkl']
+        for file in required_files:
+            file_status[file] = os.path.exists(file)
+        
         return jsonify({
-            'status': 'success' if all([model_loaded, scaler_loaded, encoders_loaded]) else 'error',
+            'status': 'success' if all([model_loaded, scaler_loaded, encoders_loaded, features_loaded]) else 'error',
             'components': {
                 'model_loaded': model_loaded,
                 'scaler_loaded': scaler_loaded,
-                'encoders_loaded': encoders_loaded
+                'encoders_loaded': encoders_loaded,
+                'features_loaded': features_loaded
             },
+            'files': file_status,
             'timestamp': datetime.now().isoformat()
         })
     except Exception as e:
+        logger.error(f"Health check error: {str(e)}")
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
 @app.errorhandler(404)
@@ -197,9 +315,11 @@ def not_found(error):
 
 @app.errorhandler(500)
 def internal_error(error):
+    logger.error(f"Internal server error: {str(error)}")
     return jsonify({'status': 'error', 'message': 'Internal server error'}), 500
 
 if __name__ == '__main__':
+    logger.info("Attempting to load model artifacts...")
     if load_model_artifacts():
         logger.info("Starting Flask server...")
         app.run(debug=True, host='0.0.0.0', port=5000)
@@ -207,7 +327,7 @@ if __name__ == '__main__':
         logger.error("Failed to load model artifacts. Please ensure all .pkl files are present.")
         print("Required files:")
         print("- heart_disease_model.pkl")
-        print("- scaler.pkl")
+        print("- scaler.pkl") 
         print("- label_encoders.pkl")
         print("- feature_names.pkl")
         print("Run the ML training script first to generate these files.")
