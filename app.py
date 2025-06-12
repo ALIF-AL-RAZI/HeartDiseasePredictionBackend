@@ -9,7 +9,7 @@ from datetime import datetime
 
 # Initialize Flask app
 app = Flask(__name__)
-CORS(app, origins=["https://toggleit-heart-disease-prediction.vercel.app"])  # Enable CORS for frontend communication
+CORS(app, origins=["https://toggleit-heart-disease-prediction.vercel.app", "http://localhost:3000"])  # Enable CORS for frontend communication
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -23,9 +23,11 @@ feature_names = None
 
 def load_model_artifacts():
     """Load all saved model artifacts from the 'models' folder with detailed error reporting"""
+    os.makedirs('models', exist_ok=True)
+    
     global model, scaler, label_encoders, feature_names
     
-    models_dir = os.path.join(os.path.dirname(__file__), 'models')  # Absolute path to models folder
+    # models_dir = os.path.join(os.path.dirname(__file__), 'models')  # Absolute path to models folder
 
     required_files = {
         'heart_disease_model.pkl': 'model',
@@ -34,7 +36,7 @@ def load_model_artifacts():
         'feature_names.pkl': 'feature_names'
     }
 
-    missing_files = [fname for fname in required_files if not os.path.exists(os.path.join(models_dir, fname))]
+    missing_files = [fname for fname in required_files if not os.path.exists(os.path.join('models', fname))]
     if missing_files:
         logger.error(f"Missing required files in models directory: {missing_files}")
         return False
@@ -42,22 +44,22 @@ def load_model_artifacts():
     try:
         logger.info("Loading model artifacts from 'models' folder...")
         logger.info(f"Current working directory: {os.getcwd()}")
-        logger.info(f"Models directory: {models_dir}")
-        logger.info(f"Files in models directory: {os.listdir(models_dir)}")
+        logger.info(f"Models directory: {'models'}")
+        logger.info(f"Files in models directory: {os.listdir('models')}")
 
-        with open(os.path.join(models_dir, 'heart_disease_model.pkl'), 'rb') as f:
+        with open(os.path.join('models', 'heart_disease_model.pkl'), 'rb') as f:
             model = pickle.load(f)
         logger.info(f"Model loaded: {type(model).__name__}")
         
-        with open(os.path.join(models_dir, 'scaler.pkl'), 'rb') as f:
+        with open(os.path.join('models', 'scaler.pkl'), 'rb') as f:
             scaler = pickle.load(f)
         logger.info(f"Scaler loaded: {type(scaler).__name__}")
         
-        with open(os.path.join(models_dir, 'label_encoders.pkl'), 'rb') as f:
+        with open(os.path.join('models', 'label_encoders.pkl'), 'rb') as f:
             label_encoders = pickle.load(f)
         logger.info(f"Label encoders loaded: {list(label_encoders.keys()) if label_encoders else 'None'}") 
         
-        with open(os.path.join(models_dir, 'feature_names.pkl'), 'rb') as f:
+        with open(os.path.join('models', 'feature_names.pkl'), 'rb') as f:
             feature_names = pickle.load(f)
         logger.info(f"Feature names loaded: {feature_names}")
         
