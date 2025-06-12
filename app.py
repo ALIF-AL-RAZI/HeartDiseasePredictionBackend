@@ -9,7 +9,7 @@ from datetime import datetime
 
 # Initialize Flask app
 app = Flask(__name__)
-CORS(app)  # Enable CORS for frontend communication
+CORS(app, origins=["https://toggleit-heart-disease-prediction.vercel.app"])  # Enable CORS for frontend communication
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
