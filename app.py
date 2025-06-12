@@ -55,7 +55,7 @@ def load_model_artifacts():
         
         with open(os.path.join(models_dir, 'label_encoders.pkl'), 'rb') as f:
             label_encoders = pickle.load(f)
-        logger.info(f"Label encoders loaded: {list(label_encoders.keys()) if label_encoders else 'None'}")
+        logger.info(f"Label encoders loaded: {list(label_encoders.keys()) if label_encoders else 'None'}") 
         
         with open(os.path.join(models_dir, 'feature_names.pkl'), 'rb') as f:
             feature_names = pickle.load(f)
