@@ -1,9 +1,9 @@
 # requirements.txt - Python dependencies for Flask backend
-Flask
-Flask-CORS
-scikit-learn
-pandas
-numpy
-pickle-mixin
-gunicorn
-python-dotenv
+Flask==2.0.1
+Flask-CORS==3.0.10
+scikit-learn==1.0.2  # Use the exact version you used locally
+pandas==1.3.4  # Use the exact version you used locally
+numpy==1.21.4  # Use the exact version you used locally
+pickle-mixin==1.0.2
+gunicorn==20.1.0
+python-dotenv==0.19.2

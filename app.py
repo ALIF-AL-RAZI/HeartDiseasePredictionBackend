@@ -41,6 +41,9 @@ def load_model_artifacts():
 
     try:
         logger.info("Loading model artifacts from 'models' folder...")
+        logger.info(f"Current working directory: {os.getcwd()}")
+        logger.info(f"Models directory: {models_dir}")
+        logger.info(f"Files in models directory: {os.listdir(models_dir)}")
 
         with open(os.path.join(models_dir, 'heart_disease_model.pkl'), 'rb') as f:
             model = pickle.load(f)
@@ -69,6 +72,8 @@ def load_model_artifacts():
     except Exception as e:
         logger.error(f"Error loading model artifacts: {str(e)}")
         logger.error(f"Error type: {type(e).__name__}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
         return False
 
 
