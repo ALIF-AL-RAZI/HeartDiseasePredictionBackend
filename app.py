@@ -22,69 +22,55 @@ label_encoders = None
 feature_names = None
 
 def load_model_artifacts():
-    """Load all saved model artifacts with detailed error reporting"""
+    """Load all saved model artifacts from the 'models' folder with detailed error reporting"""
     global model, scaler, label_encoders, feature_names
     
-    required_files = [
-        'heart_disease_model.pkl',
-        'scaler.pkl', 
-        'label_encoders.pkl',
-        'feature_names.pkl'
-    ]
-    
-    # Check if files exist
-    missing_files = []
-    for file in required_files:
-        if not os.path.exists(file):
-            missing_files.append(file)
-    
+    models_dir = os.path.join(os.path.dirname(__file__), 'models')  # Absolute path to models folder
+
+    required_files = {
+        'heart_disease_model.pkl': 'model',
+        'scaler.pkl': 'scaler',
+        'label_encoders.pkl': 'label_encoders',
+        'feature_names.pkl': 'feature_names'
+    }
+
+    missing_files = [fname for fname in required_files if not os.path.exists(os.path.join(models_dir, fname))]
     if missing_files:
-        logger.error(f"Missing required files: {missing_files}")
+        logger.error(f"Missing required files in models directory: {missing_files}")
         return False
-    
+
     try:
-        # Load each file with individual error handling
-        logger.info("Loading model...")
-        with open('heart_disease_model.pkl', 'rb') as f:
+        logger.info("Loading model artifacts from 'models' folder...")
+
+        with open(os.path.join(models_dir, 'heart_disease_model.pkl'), 'rb') as f:
             model = pickle.load(f)
         logger.info(f"Model loaded: {type(model).__name__}")
         
-        logger.info("Loading scaler...")
-        with open('scaler.pkl', 'rb') as f:
+        with open(os.path.join(models_dir, 'scaler.pkl'), 'rb') as f:
             scaler = pickle.load(f)
         logger.info(f"Scaler loaded: {type(scaler).__name__}")
         
-        logger.info("Loading label encoders...")
-        with open('label_encoders.pkl', 'rb') as f:
+        with open(os.path.join(models_dir, 'label_encoders.pkl'), 'rb') as f:
             label_encoders = pickle.load(f)
         logger.info(f"Label encoders loaded: {list(label_encoders.keys()) if label_encoders else 'None'}")
         
-        logger.info("Loading feature names...")
-        with open('feature_names.pkl', 'rb') as f:
+        with open(os.path.join(models_dir, 'feature_names.pkl'), 'rb') as f:
             feature_names = pickle.load(f)
         logger.info(f"Feature names loaded: {feature_names}")
         
-        # Validate loaded artifacts
-        if model is None:
-            logger.error("Model is None after loading")
+        # Final validation
+        if any(x is None for x in [model, scaler, label_encoders, feature_names]):
+            logger.error("One or more artifacts are None after loading.")
             return False
-        if scaler is None:
-            logger.error("Scaler is None after loading")
-            return False
-        if label_encoders is None:
-            logger.error("Label encoders is None after loading")
-            return False
-        if feature_names is None:
-            logger.error("Feature names is None after loading")
-            return False
-            
+        
         logger.info("All model artifacts loaded and validated successfully!")
         return True
-        
+
     except Exception as e:
         logger.error(f"Error loading model artifacts: {str(e)}")
         logger.error(f"Error type: {type(e).__name__}")
         return False
+
 
 def validate_input_data(data):
     """Validate input data format and values"""
