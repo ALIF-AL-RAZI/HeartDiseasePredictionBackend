@@ -1,0 +1,9 @@
+# requirements.txt - Python dependencies for Flask backend
+Flask
+Flask-CORS
+scikit-learn
+pandas
+numpy
+pickle-mixin
+gunicorn
+python-dotenv

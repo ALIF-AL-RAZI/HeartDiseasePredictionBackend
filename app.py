@@ -1,0 +1,284 @@
+# Flask Backend for Heart Disease Prediction
+from flask import Flask, request, jsonify
+from flask_cors import CORS
+import pickle
+import numpy as np
+import pandas as pd
+import logging
+from datetime import datetime
+
+# Initialize Flask app
+app = Flask(__name__)
+CORS(app)  # Enable CORS for frontend communication
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Global variables to store loaded models
+model = None
+scaler = None
+label_encoders = None
+feature_names = None
+
+def load_model_artifacts():
+    """Load all saved model artifacts"""
+    global model, scaler, label_encoders, feature_names
+    
+    try:
+        # Load trained model
+        with open('heart_disease_model.pkl', 'rb') as f:
+            model = pickle.load(f)
+        
+        # Load scaler
+        with open('scaler.pkl', 'rb') as f:
+            scaler = pickle.load(f)
+        
+        # Load label encoders
+        with open('label_encoders.pkl', 'rb') as f:
+            label_encoders = pickle.load(f)
+        
+        # Load feature names
+        with open('feature_names.pkl', 'rb') as f:
+            feature_names = pickle.load(f)
+        
+        logger.info("All model artifacts loaded successfully!")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Error loading model artifacts: {str(e)}")
+        return False
+
+def validate_input_data(data):
+    """Validate input data format and values"""
+    required_fields = [
+        'Age', 'Sex', 'ChestPainType', 'RestingBP', 'Cholesterol',
+        'FastingBS', 'RestingECG', 'MaxHR', 'ExerciseAngina', 'Oldpeak', 'ST_Slope'
+    ]
+    
+    # Check if all required fields are present
+    missing_fields = [field for field in required_fields if field not in data]
+    if missing_fields:
+        return False, f"Missing required fields: {', '.join(missing_fields)}"
+    
+    # Validate data types and ranges
+    try:
+        # Age validation
+        age = float(data['Age'])
+        if not (0 <= age <= 120):
+            return False, "Age must be between 0 and 120"
+        
+        # RestingBP validation
+        resting_bp = float(data['RestingBP'])
+        if not (0 <= resting_bp <= 300):
+            return False, "RestingBP must be between 0 and 300"
+        
+        # Cholesterol validation
+        cholesterol = float(data['Cholesterol'])
+        if not (0 <= cholesterol <= 1000):
+            return False, "Cholesterol must be between 0 and 1000"
+        
+        # FastingBS validation
+        fasting_bs = int(data['FastingBS'])
+        if fasting_bs not in [0, 1]:
+            return False, "FastingBS must be 0 or 1"
+        
+        # MaxHR validation
+        max_hr = float(data['MaxHR'])
+        if not (0 <= max_hr <= 250):
+            return False, "MaxHR must be between 0 and 250"
+        
+        # Oldpeak validation
+        oldpeak = float(data['Oldpeak'])
+        if not (-10 <= oldpeak <= 10):
+            return False, "Oldpeak must be between -10 and 10"
+        
+        # Categorical validations
+        categorical_validations = {
+            'Sex': ['M', 'F'],
+            'ChestPainType': ['ATA', 'NAP', 'ASY', 'TA'],
+            'RestingECG': ['Normal', 'ST', 'LVH'],
+            'ExerciseAngina': ['Y', 'N'],
+            'ST_Slope': ['Up', 'Flat', 'Down']
+        }
+        
+        for field, valid_values in categorical_validations.items():
+            if data[field] not in valid_values:
+                return False, f"{field} must be one of: {', '.join(valid_values)}"
+        
+        return True, "Validation successful"
+        
+    except (ValueError, TypeError) as e:
+        return False, f"Invalid data type: {str(e)}"
+
+def preprocess_input(data):
+    """Preprocess input data for prediction"""
+    try:
+        # Create a copy of input data
+        processed_data = data.copy()
+        
+        # Convert numerical fields to appropriate types
+        processed_data['Age'] = float(processed_data['Age'])
+        processed_data['RestingBP'] = float(processed_data['RestingBP'])
+        processed_data['Cholesterol'] = float(processed_data['Cholesterol'])
+        processed_data['FastingBS'] = int(processed_data['FastingBS'])
+        processed_data['MaxHR'] = float(processed_data['MaxHR'])
+        processed_data['Oldpeak'] = float(processed_data['Oldpeak'])
+        
+        # Encode categorical features
+        categorical_cols = ['Sex', 'ChestPainType', 'RestingECG', 'ExerciseAngina', 'ST_Slope']
+        
+        for col in categorical_cols:
+            if col in label_encoders:
+                try:
+                    processed_data[col] = label_encoders[col].transform([processed_data[col]])[0]
+                except ValueError as e:
+                    raise ValueError(f"Unknown category '{processed_data[col]}' for {col}")
+        
+        # Create array in the correct order
+        feature_array = np.array([processed_data[feature] for feature in feature_names]).reshape(1, -1)
+        
+        # Scale the features
+        scaled_features = scaler.transform(feature_array)
+        
+        return scaled_features
+        
+    except Exception as e:
+        raise Exception(f"Error in preprocessing: {str(e)}")
+
+@app.route('/', methods=['GET'])
+def home():
+    """Health check endpoint"""
+    return jsonify({
+        'status': 'success',
+        'message': 'Heart Disease Prediction API is running!',
+        'timestamp': datetime.now().isoformat()
+    })
+
+@app.route('/predict', methods=['POST'])
+def predict():
+    """Main prediction endpoint"""
+    try:
+        # Get JSON data from request
+        data = request.get_json()
+        
+        if not data:
+            return jsonify({
+                'status': 'error',
+                'message': 'No input data provided'
+            }), 400
+        
+        # Validate input data
+        is_valid, validation_message = validate_input_data(data)
+        if not is_valid:
+            return jsonify({
+                'status': 'error',
+                'message': validation_message
+            }), 400
+        
+        # Preprocess input
+        processed_input = preprocess_input(data)
+        
+        # Make prediction
+        prediction = model.predict(processed_input)[0]
+        prediction_proba = model.predict_proba(processed_input)[0]
+        
+        # Prepare response
+        result = {
+            'status': 'success',
+            'prediction': int(prediction),
+            'prediction_text': 'Heart Disease Detected' if prediction == 1 else 'No Heart Disease',
+            'probability': {
+                'no_heart_disease': float(prediction_proba[0]),
+                'heart_disease': float(prediction_proba[1])
+            },
+            'confidence': float(max(prediction_proba)),
+            'input_data': data,
+            'timestamp': datetime.now().isoformat()
+        }
+        
+        logger.info(f"Prediction made: {result['prediction_text']} (confidence: {result['confidence']:.3f})")
+        
+        return jsonify(result)
+        
+    except Exception as e:
+        logger.error(f"Error in prediction: {str(e)}")
+        return jsonify({
+            'status': 'error',
+            'message': f'Prediction failed: {str(e)}'
+        }), 500
+
+@app.route('/model-info', methods=['GET'])
+def model_info():
+    """Get information about the loaded model"""
+    try:
+        info = {
+            'status': 'success',
+            'model_type': str(type(model).__name__),
+            'feature_names': feature_names,
+            'categorical_features': list(label_encoders.keys()),
+            'categorical_options': {
+                col: encoder.classes_.tolist() 
+                for col, encoder in label_encoders.items()
+            }
+        }
+        return jsonify(info)
+        
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'message': f'Error getting model info: {str(e)}'
+        }), 500
+
+@app.route('/health', methods=['GET'])
+def health_check():
+    """Detailed health check endpoint"""
+    try:
+        model_loaded = model is not None
+        scaler_loaded = scaler is not None
+        encoders_loaded = label_encoders is not None
+        
+        return jsonify({
+            'status': 'success' if all([model_loaded, scaler_loaded, encoders_loaded]) else 'error',
+            'components': {
+                'model_loaded': model_loaded,
+                'scaler_loaded': scaler_loaded,
+                'encoders_loaded': encoders_loaded
+            },
+            'timestamp': datetime.now().isoformat()
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        }), 500
+
+# Error handlers
+@app.errorhandler(404)
+def not_found(error):
+    return jsonify({
+        'status': 'error',
+        'message': 'Endpoint not found'
+    }), 404
+
+@app.errorhandler(500)
+def internal_error(error):
+    return jsonify({
+        'status': 'error',
+        'message': 'Internal server error'
+    }), 500
+
+if __name__ == '__main__':
+    # Load model artifacts on startup
+    if load_model_artifacts():
+        logger.info("Starting Flask server...")
+        app.run(debug=True, host='0.0.0.0', port=5000)
+    else:
+        logger.error("Failed to load model artifacts. Please ensure all .pkl files are present.")
+        print("Required files:")
+        print("- heart_disease_model.pkl")
+        print("- scaler.pkl")
+        print("- label_encoders.pkl")
+        print("- feature_names.pkl")
+        print("Run the ML training script first to generate these files.")
