@@ -42,14 +42,15 @@ def load_model_artifacts():
         return False
 
     try:
-        logger.info("Loading model artifacts from 'models' folder...")
-        logger.info(f"Current working directory: {os.getcwd()}")
-        logger.info(f"Models directory: {'models'}")
-        logger.info(f"Files in models directory: {os.listdir('models')}")
+        print("Loading model artifacts from 'models' folder...")
+        print(f"Current working directory: {os.getcwd()}")
+        print(f"Models directory: {'models'}")
+        print(f"Files in models directory: {os.listdir('models')}")
 
         with open(os.path.join('models', 'heart_disease_model.pkl'), 'rb') as f:
             model = pickle.load(f)
-        logger.info(f"Model loaded: {type(model).__name__}")
+        print(f"Model loaded: {type(model).__name__}")
+        print(f"Model loaded: {type(model).__name__}")  # Print to console for debugging
         
         with open(os.path.join('models', 'scaler.pkl'), 'rb') as f:
             scaler = pickle.load(f)
